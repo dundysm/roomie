@@ -1,0 +1,157 @@
+{
+ "source": "unitreerobotics/unitree_rl_mjlab@1425b15 deploy/robots/g1/config/policy/velocity/v0 (Apache-2.0)",
+ "joint_names": [
+  "left_hip_pitch_joint",
+  "left_hip_roll_joint",
+  "left_hip_yaw_joint",
+  "left_knee_joint",
+  "left_ankle_pitch_joint",
+  "left_ankle_roll_joint",
+  "right_hip_pitch_joint",
+  "right_hip_roll_joint",
+  "right_hip_yaw_joint",
+  "right_knee_joint",
+  "right_ankle_pitch_joint",
+  "right_ankle_roll_joint",
+  "waist_yaw_joint",
+  "waist_roll_joint",
+  "waist_pitch_joint",
+  "left_shoulder_pitch_joint",
+  "left_shoulder_roll_joint",
+  "left_shoulder_yaw_joint",
+  "left_elbow_joint",
+  "left_wrist_roll_joint",
+  "left_wrist_pitch_joint",
+  "left_wrist_yaw_joint",
+  "right_shoulder_pitch_joint",
+  "right_shoulder_roll_joint",
+  "right_shoulder_yaw_joint",
+  "right_elbow_joint",
+  "right_wrist_roll_joint",
+  "right_wrist_pitch_joint",
+  "right_wrist_yaw_joint"
+ ],
+ "default_joint_pos": [
+  -0.1,
+  0.0,
+  0.0,
+  0.3,
+  -0.2,
+  0.0,
+  -0.1,
+  0.0,
+  0.0,
+  0.3,
+  -0.2,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.35,
+  0.18,
+  0.0,
+  0.87,
+  0.0,
+  0.0,
+  0.0,
+  0.35,
+  -0.18,
+  0.0,
+  0.87,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "action_scale": [
+  0.548,
+  0.351,
+  0.548,
+  0.351,
+  0.439,
+  0.439,
+  0.548,
+  0.351,
+  0.548,
+  0.351,
+  0.439,
+  0.439,
+  0.548,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.075,
+  0.075,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.439,
+  0.075,
+  0.075
+ ],
+ "obs_dim": 98,
+ "normalizer": {
+  "mean": 0,
+  "std": 98
+ },
+ "layers": [
+  {
+   "out": 512,
+   "in": 98,
+   "w": 196,
+   "b": 50372,
+   "elu": true
+  },
+  {
+   "out": 256,
+   "in": 512,
+   "w": 50884,
+   "b": 181956,
+   "elu": true
+  },
+  {
+   "out": 128,
+   "in": 256,
+   "w": 182212,
+   "b": 214980,
+   "elu": true
+  },
+  {
+   "out": 29,
+   "in": 128,
+   "w": 215108,
+   "b": 218820,
+   "elu": false
+  }
+ ],
+ "step_dt": 0.02,
+ "gait_period": 0.6,
+ "ranges": {
+  "lin_vel_x": [
+   -0.5,
+   1.0
+  ],
+  "lin_vel_y": [
+   -0.5,
+   0.5
+  ],
+  "ang_vel_z": [
+   -1.0,
+   1.0
+  ],
+  "heading": null
+ },
+ "obs_order": [
+  "base_ang_vel",
+  "projected_gravity",
+  "velocity_commands",
+  "gait_phase",
+  "joint_pos_rel",
+  "joint_vel_rel",
+  "last_action"
+ ]
+}

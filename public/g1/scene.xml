@@ -1,0 +1,6 @@
+<mujoco>
+  <include file="g1.xml"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="0 0 0.05" friction="1 0.005 0.0001" rgba="0 0 0 0"/>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>roomwalk · a humanoid in your room</title>
+<meta name="description" content="Drop in a Gaussian-splat scan of your room and drive a live, policy-controlled Unitree G1 around it. MuJoCo physics and the RL policy run in your browser.">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+    "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@2.2.0/dist/spark.module.js",
+    "@mujoco/mujoco": "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.14.0/mujoco.js"
+  }
+}
+</script>
+<style>
+:root { --ink: #eef1f5; --mute: #9aa3ad; --line: #ffffff22; --panel: #0e1116cc; --gold: #ffd34d; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d10; color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; touch-action: none; }
+.panel { position: fixed; top: 14px; left: 14px; max-width: calc(100vw - 28px); background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+h1 { margin: 0 0 2px; font: 600 15px var(--mono); letter-spacing: .02em; }
+.sub { color: var(--mute); font-size: 12px; margin-bottom: 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, label.btn { font: 600 12px var(--mono); color: var(--ink); background: #ffffff10; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+button:hover, label.btn:hover { background: #ffffff1c; }
+button.on { background: var(--ink); color: #0b0d10; }
+#file { display: none; }
+.scale { display: flex; align-items: center; gap: 8px; margin-top: 10px; font: 11px var(--mono); color: var(--mute); }
+.scale input { flex: 1; accent-color: #fff; }
+#status { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 28px)); text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font: 12px var(--mono); color: var(--ink); pointer-events: none; }
+#hud { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); font: 12px var(--mono); color: var(--mute); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; white-space: nowrap; }
+#fell { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); font: 600 15px var(--mono); background: #2a0f0fcc; border: 1px solid #ff6b6b55; border-radius: 12px; padding: 12px 16px; }
+#joy { position: fixed; right: 22px; bottom: 56px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid var(--line); background: #ffffff0a; touch-action: none; display: none; }
+#knob { position: absolute; left: 38px; top: 38px; width: 44px; height: 44px; border-radius: 50%; background: #ffffff55; transition: transform .05s; }
+.keys { margin-top: 10px; font: 11px var(--mono); color: var(--mute); }
+@media (pointer: coarse) { #joy { display: block; } .keys { display: none; } #status { top: auto; bottom: 190px; } }
+@media (max-width: 600px) { .panel { top: 10px; left: 10px; padding: 10px; } #status { top: auto; bottom: 190px; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div class="panel">
+  <h1>roomwalk</h1>
+  <div class="sub">a live humanoid in your room</div>
+  <div class="row">
+    <label class="btn" for="file">load scan</label><input id="file" type="file" accept=".spz,.ply,.splat,.ksplat,.sog,.zip">
+    <button id="floor">set floor</button>
+    <button id="place">place robot</button>
+    <button id="reset">reset</button>
+    <button id="follow" class="on">follow</button>
+    <button id="colliders">colliders</button>
+  </div>
+  <div class="scale">scale <input id="scale" type="range" min="-2" max="2" step="0.01" value="0"></div>
+  <div class="keys">W/S walk · A/D strafe · Q/E turn · R reset · F follow</div>
+</div>
+<div id="status">starting…</div>
+<div id="hud"></div>
+<div id="fell" hidden>it fell over · press R</div>
+<div id="joy"><div id="knob"></div></div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

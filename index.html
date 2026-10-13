@@ -28,6 +28,7 @@ h1 { margin: 0 0 2px; font: 600 15px var(--mono); letter-spacing: .02em; }
 button, label.btn { font: 600 12px var(--mono); color: var(--ink); background: #ffffff10; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
 button:hover, label.btn:hover { background: #ffffff1c; }
 button.on { background: var(--ink); color: #0b0d10; }
+#rec.on { background: #ff4d4d; color: #fff; border-color: #ff4d4d; }
 #file { display: none; }
 .scale { display: flex; align-items: center; gap: 8px; margin-top: 10px; font: 11px var(--mono); color: var(--mute); }
 .scale input { flex: 1; accent-color: #fff; }
@@ -54,8 +55,13 @@ button.on { background: var(--ink); color: #0b0d10; }
     <button id="follow" class="on">follow</button>
     <button id="colliders">colliders</button>
   </div>
+  <div class="row" style="margin-top:6px">
+    <button id="throw">throw ball</button>
+    <button id="pip">robot view</button>
+    <button id="rec">rec</button>
+  </div>
   <div class="scale">scale <input id="scale" type="range" min="-2" max="2" step="0.01" value="0"></div>
-  <div class="keys">WASD walk (camera-relative) · shift run · drag to look · click the floor to walk there · R reset</div>
+  <div class="keys">WASD walk · shift run · drag to look · click floor: walk there · drag robot: shove · B throw · V robot view · R reset</div>
 </div>
 <div id="status">starting…</div>
 <div id="hud"></div>

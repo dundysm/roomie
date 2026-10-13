@@ -62,7 +62,65 @@ export function buildObstacles(splat, room) {
     const k = Math.floor(x / CELL) + ',' + Math.floor(y / CELL);
     return onFloor.has(k) && !occ.has(k);
   };
-  return { xml, boxes, cell: CELL, spawn, free };
+  // inside a wall or furniture (unscanned floor doesn't count): for the camera
+  const solid = (x, y) => occ.has(Math.floor(x / CELL) + ',' + Math.floor(y / CELL));
+  return { xml, boxes, cell: CELL, spawn, free, solid, plan: planner(occ, onFloor) };
+}
+
+// A* over the floor grid with obstacles inflated by the robot's half-width; the result is
+// shortcut by line of sight so the robot walks straight segments, not a staircase.
+const INFLATE = 0.3;
+function planner(occ, onFloor) {
+  const key = (i, j) => i + ',' + j;
+  const r = Math.ceil(INFLATE / CELL), blocked = new Set();
+  for (const k of occ) {
+    const [i, j] = k.split(',').map(Number);
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (a * a + b * b <= r * r) blocked.add(key(i + a, j + b));
+  }
+  const ok = (i, j) => onFloor.has(key(i, j)) && !blocked.has(key(i, j));
+  const cellOf = (x, y) => [Math.floor(x / CELL), Math.floor(y / CELL)];
+  const center = ([i, j]) => [(i + 0.5) * CELL, (j + 0.5) * CELL];
+  function nearestOk([i, j]) {
+    for (let d = 0; d < 25; d++)
+      for (let a = -d; a <= d; a++) for (let b = -d; b <= d; b++)
+        if (Math.max(Math.abs(a), Math.abs(b)) === d && ok(i + a, j + b)) return [i + a, j + b];
+    return null;
+  }
+  function los(a, b) { // straight line stays on walkable cells
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2);
+    for (let s = 0; s <= n; s++) {
+      const t = s / Math.max(1, n);
+      if (!ok(Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t))) return false;
+    }
+    return true;
+  }
+  return function plan(from, to) {
+    const s = nearestOk(cellOf(...from)), g = nearestOk(cellOf(...to));
+    if (!s || !g) return null;
+    const open = [[0, s]], gs = new Map([[key(...s), 0]]), prev = new Map();
+    const h = c => Math.hypot(c[0] - g[0], c[1] - g[1]);
+    let found = false, iters = 0;
+    while (open.length && iters++ < 60000) {
+      let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+      const [, c] = open.splice(bi, 1)[0];
+      if (c[0] === g[0] && c[1] === g[1]) { found = true; break; }
+      const gc = gs.get(key(...c));
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const n = [c[0] + a, c[1] + b], k = key(...n);
+        if (!ok(...n)) continue;
+        const ng = gc + Math.hypot(a, b);
+        if (ng < (gs.get(k) ?? Infinity)) { gs.set(k, ng); prev.set(k, c); open.push([ng + h(n), n]); }
+      }
+    }
+    if (!found) return null;
+    const path = [g];
+    for (let k = key(...g); prev.has(k); k = key(...prev.get(k))) path.push(prev.get(k));
+    path.reverse();
+    const out = [path[0]];
+    for (let i = 1; i < path.length; i++) if (!los(out[out.length - 1], path[i])) out.push(path[i - 1]);
+    out.push(path[path.length - 1]);
+    return out.slice(1).map(center);
+  };
 }
 
 // The most open floor cell reachable from where the scan was captured (the origin), plus the

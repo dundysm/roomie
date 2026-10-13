@@ -1,7 +1,11 @@
-// MuJoCo + the unitree_rl_mjlab G1 velocity policy, ported 1:1 from tools/sim_check.py.
+// MuJoCo + the unitree_rl_mjlab G1 velocity policy, ported 1:1 from tools/sim_check.py,
+// plus the things you can do to the robot: throw balls at it and push it around.
 import loadMujoco from '@mujoco/mujoco';
 
-const HINGE = 3; // mjJNT_HINGE
+const HINGE = 3, FREE = 0; // mjtJoint
+export const N_BALLS = 8;
+const BALL_R = 0.1;
+const BALL_COLORS = ['1 0.36 0.3', '1 0.8 0.25', '0.3 0.8 1', '0.55 0.95 0.45', '1 0.45 0.8', '0.95 0.95 0.95', '1 0.55 0.15', '0.6 0.5 1'];
 
 async function fetchBytes(url) {
   const r = await fetch(url);
@@ -38,28 +42,38 @@ class Policy {
 
 export async function createSim(base) {
   const mujoco = await loadMujoco();
-  const [xml, cfg, bin] = await Promise.all([
+  const [xmlRaw, cfg, bin] = await Promise.all([
     fetch(base + 'g1.xml').then(r => r.text()),
     fetch(base + 'policy.json').then(r => r.json()),
     fetch(base + 'policy.bin').then(r => r.arrayBuffer()).then(b => new Float32Array(b)),
   ]);
+  // The robot file's keyframe has the robot-only qpos size; the scene adds balls, so reset by hand.
+  const xml = xmlRaw.replace(/<keyframe>[\s\S]*?<\/keyframe>/, '');
   const FS = mujoco.FS;
   FS.mkdir('/g1'); FS.mkdir('/g1/assets');
   FS.writeFile('/g1/g1.xml', xml);
   const meshFiles = [...new Set([...xml.matchAll(/file="([^"]+)"/g)].map(m => m[1]))];
   await Promise.all(meshFiles.map(async f => FS.writeFile('/g1/assets/' + f, await fetchBytes(base + 'assets/' + f))));
 
+  const balls = Array.from({ length: N_BALLS }, (_, i) =>
+    `<body name="ball${i}" pos="${100 + i} 100 ${BALL_R}"><freejoint/>` +
+    `<geom type="sphere" size="${BALL_R}" mass="0.4" group="1" rgba="${BALL_COLORS[i]} 1" condim="3" friction="0.7 0.01 0.002" solref="0.006 0.25"/></body>`).join('\n');
+
   const policy = new Policy(cfg, bin);
   const baseScene = new TextDecoder().decode(await fetchBytes(base + 'scene.xml'));
-  let model, data, hinges, qadr, vadr, actFor, decim;
+  let model, data, hinges, qadr, vadr, actFor, decim, ballQ = [], ballV = [], robotBodies = 0;
   function compile(extraWorld = '') {
-    FS.writeFile('/g1/scene.xml', baseScene.replace('</worldbody>', extraWorld + '\n  </worldbody>'));
+    FS.writeFile('/g1/scene.xml', baseScene.replace('</worldbody>', extraWorld + '\n' + balls + '\n  </worldbody>'));
     const m = mujoco.MjModel.from_xml_path('/g1/scene.xml');
     if (data) data.delete();
     if (model) model.delete();
     model = m; data = new mujoco.MjData(model);
-    hinges = [];
-    for (let j = 0; j < model.njnt; j++) if (model.jnt_type[j] === HINGE) hinges.push(j);
+    hinges = []; ballQ = []; ballV = [];
+    for (let j = 0; j < model.njnt; j++) {
+      if (model.jnt_type[j] === HINGE) hinges.push(j);
+      else if (model.jnt_type[j] === FREE && j > 0) { ballQ.push(model.jnt_qposadr[j]); ballV.push(model.jnt_dofadr[j]); }
+    }
+    robotBodies = model.nbody - N_BALLS; // world + robot bodies come first
     qadr = hinges.map(j => model.jnt_qposadr[j]);
     vadr = hinges.map(j => model.jnt_dofadr[j]);
     actFor = [];
@@ -75,7 +89,7 @@ export async function createSim(base) {
 
   const obs = new Float32Array(cfg.obs_dim);
   const last = new Float32Array(N);
-  let phase = 0;
+  let phase = 0, nextBall = 0;
   const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
 
   // v' = R(q)^T v for a unit quaternion q = (w, x, y, z)
@@ -86,10 +100,15 @@ export async function createSim(base) {
     out[o + 1] = vy + w * ty + (-z * tx + x * tz);
     out[o + 2] = vz + w * tz + (-x * ty + y * tx);
   }
+  function parkBalls() {
+    const qp = data.qpos, qv = data.qvel;
+    ballQ.forEach((a, i) => { qp.set([100 + i, 100, BALL_R, 1, 0, 0, 0], a); qv.fill(0, ballV[i], ballV[i] + 6); });
+  }
 
   const sim = {
     get model() { return model; }, get data() { return data; }, mujoco, policy, cfg,
-    // Recompile with extra <worldbody> geometry (room obstacles); the robot keeps its pose.
+    get robotBodies() { return robotBodies; },
+    // Recompile with extra <worldbody> geometry (room obstacles); robot and balls keep their state.
     rebuild(extraWorld) {
       const keep = Float64Array.from(data.qpos);
       compile(extraWorld);
@@ -97,13 +116,24 @@ export async function createSim(base) {
     },
     cmd: [0, 0, 0],
     fallen: false,
-    reset(x = 0, y = 0, yaw = 0) {
-      mujoco.mj_resetDataKeyframe(model, data, 0);
-      const qp = data.qpos;
-      qp[0] = x; qp[1] = y;
-      qp[3] = Math.cos(yaw / 2); qp[4] = 0; qp[5] = 0; qp[6] = Math.sin(yaw / 2);
+    push: null, // { body, force: [3] } applied at the body's centre of mass while set
+    reset(x = 0, y = 0, yaw = 0, keepBalls = false) {
+      const qp = data.qpos, saved = keepBalls ? Float64Array.from(qp) : null;
+      mujoco.mj_resetData(model, data);
+      qp.set([x, y, 0.8, Math.cos(yaw / 2), 0, 0, Math.sin(yaw / 2)], 0);
+      for (let i = 0; i < N; i++) qp[qadr[i]] = def[i];
+      const ctrl = data.ctrl;
+      for (let k = 0; k < model.nu; k++) ctrl[k] = def[actFor[k]];
+      if (saved) ballQ.forEach(a => qp.set(saved.subarray(a, a + 7), a)); else parkBalls();
       mujoco.mj_forward(model, data);
       last.fill(0); phase = 0; this.fallen = false;
+    },
+    // Launch the next ball from `pos` with velocity `vel` (MuJoCo frame).
+    throwBall(pos, vel) {
+      const i = nextBall++ % N_BALLS, a = ballQ[i], v = ballV[i];
+      data.qpos.set([pos[0], pos[1], pos[2], 1, 0, 0, 0], a);
+      data.qvel.set([vel[0], vel[1], vel[2], 0, 0, 0], v);
+      return i;
     },
     // One 50 Hz policy step: observe, act, then `decim` physics steps.
     step() {
@@ -127,6 +157,9 @@ export async function createSim(base) {
       last.set(a);
       const ctrl = data.ctrl;
       for (let k = 0; k < model.nu; k++) { const i = actFor[k]; ctrl[k] = def[i] + scale[i] * a[i]; }
+      const xf = data.xfrc_applied;
+      xf.fill(0);
+      if (this.push) xf.set(this.push.force, this.push.body * 6);
       for (let s = 0; s < decim; s++) mujoco.mj_step(model, data);
       if (data.qpos[2] < 0.45) this.fallen = true;
     },

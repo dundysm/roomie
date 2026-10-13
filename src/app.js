@@ -4,6 +4,7 @@ import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { createSim } from './sim.js';
 import { createRobotView } from './robot-view.js';
 import { buildObstacles, obstacleView } from './obstacles.js';
+import { findFloor } from './floor.js';
 
 const $ = id => document.getElementById(id);
 const status = msg => { $('status').textContent = msg; };
@@ -71,42 +72,6 @@ function loadCalib() {
   applyCalib();
 }
 
-// Find the floor in splat-local coordinates: RANSAC over splat centres for the horizontal plane
-// (normal near the scan's ±Y) with the most support, oriented so most of the scene lies above it.
-function autoFloor(s) {
-  const P = [];
-  const stride = Math.max(1, Math.floor(s.numSplats / 40000));
-  s.forEachSplat((i, c, sc, q, o) => { if (i % stride === 0 && o > 0.3) P.push(c.x, c.y, c.z); });
-  const n = P.length / 3;
-  if (n < 500) return null;
-  const ys = []; for (let i = 0; i < n; i++) ys.push(P[i * 3 + 1]);
-  ys.sort((a, b) => a - b);
-  const tol = Math.max(0.01, 0.008 * (ys[Math.floor(n * 0.98)] - ys[Math.floor(n * 0.02)]));
-  const rnd = () => Math.floor(Math.random() * n);
-  let best = null;
-  for (let it = 0; it < 400; it++) {
-    const a = rnd() * 3, b = rnd() * 3, c = rnd() * 3;
-    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
-    const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
-    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const l = Math.hypot(nx, ny, nz); if (l < 1e-9) continue;
-    nx /= l; ny /= l; nz /= l;
-    if (Math.abs(ny) < 0.92) continue;
-    const d = -(nx * P[a] + ny * P[a + 1] + nz * P[a + 2]);
-    let cnt = 0, above = 0;
-    for (let i = 0; i < n * 3; i += 3) {
-      const e = nx * P[i] + ny * P[i + 1] + nz * P[i + 2] + d;
-      if (Math.abs(e) < tol) cnt++; else if (e > 0) above++;
-    }
-    if (!best || cnt > best.cnt) best = { cnt, nx, ny, nz, d, above };
-  }
-  if (!best) return null;
-  let { nx, ny, nz, d } = best;
-  if (best.above < n - best.cnt - best.above) { nx = -nx; ny = -ny; nz = -nz; d = -d; }
-  // Spawn where the scan was captured from: the origin, dropped onto the floor plane.
-  return { n: [nx, ny, nz], c: [-d * nx, -d * ny, -d * nz], support: best.cnt / n };
-}
-
 async function loadSplat(opts, key, label) {
   status(`loading ${label}…`);
   if (splat) { room.remove(splat); splat.dispose?.(); }
@@ -117,9 +82,12 @@ async function loadSplat(opts, key, label) {
   loadCalib();
   let how = 'floor restored';
   if (!calib) {
-    calib = autoFloor(splat);
-    how = calib ? 'floor found automatically · wrong? click “set floor”' : null;
-    if (calib) { applyCalib(); saveCalib(); }
+    calib = findFloor(splat);
+    how = calib ? `floor found · scale from ${calib.how} · wrong? “set floor” / scale slider` : null;
+    if (calib) {
+      roomScale = calib.scale; $('scale').value = Math.log2(roomScale);
+      applyCalib(); saveCalib();
+    }
   }
   grid.visible = !calib;
   if (!calib) { status(`${label} loaded · click 3 points on the floor`); startFloorPick(); return; }
@@ -159,8 +127,13 @@ $('place').onclick = () => { mode = 'place'; status('click a spot on the floor t
 let down = null;
 renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener('pointerup', e => {
-  if (!mode || !down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return; // ignore drags
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return; // ignore drags
   raycaster.setFromCamera(ndc(e), camera);
+  if (!mode) { // click-to-walk: the floor point under the cursor becomes the robot's goal
+    const p = new THREE.Vector3();
+    if (sim && raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) setGoal(p.x, -p.z);
+    return;
+  }
   if (mode === 'floor') {
     const hit = raycaster.intersectObject(splat, false)[0];
     if (!hit) return status('missed the scan; click on the floor');
@@ -177,7 +150,7 @@ renderer.domElement.addEventListener('pointerup', e => {
     applyCalib(); saveCalib(); markers.clear(); mode = null; grid.visible = false;
     rebuildWorld();
     resetRobot(); frameRobot();
-    status('floor set · drive with WASD, Q/E to turn');
+    status('floor set · WASD to walk, drag to look, click the floor to send it there');
   } else if (mode === 'place') {
     const p = new THREE.Vector3();
     if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) return;
@@ -247,14 +220,49 @@ const joy = { x: 0, y: 0 };
   const end = () => { id = null; joy.x = joy.y = 0; knob.style.transform = ''; };
   pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
 }
+// Third-person steering. Input is a direction relative to the camera (keys or joystick) or a
+// clicked floor goal; a heading controller turns the robot toward it and walks once it's facing
+// roughly the right way. The policy only takes body-frame velocity, so this is all it sees.
+let goal = null;
+const goalRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.16, 0.2, 40),
+  new THREE.MeshBasicMaterial({ color: 0xffd34d, transparent: true, opacity: 0.9, depthTest: false }),
+);
+goalRing.rotation.x = -Math.PI / 2; goalRing.visible = false; goalRing.renderOrder = 10;
+scene.add(goalRing);
+function setGoal(x, y) {
+  goal = { x, y };
+  goalRing.position.set(x, 0.01, -y); goalRing.visible = true;
+}
+function clearGoal() { goal = null; goalRing.visible = false; }
+
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 function targetCmd() {
   const k = c => keys.has(c) ? 1 : 0;
-  let vx = (k('KeyW') + k('ArrowUp')) - (k('KeyS') + k('ArrowDown'));
-  let vy = k('KeyA') - k('KeyD');
-  let wz = (k('KeyQ') + k('ArrowLeft')) - (k('KeyE') + k('ArrowRight'));
-  vx = vx > 0 ? 0.8 * vx : 0.4 * vx; vy *= 0.4; wz *= 0.9;
-  if (joy.x || joy.y) { vx = joy.y > 0 ? joy.y * 0.9 : joy.y * 0.45; wz = -joy.x * 1.0; }
-  return [vx, vy, wz];
+  let fwd = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown');
+  let side = k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
+  let mag = Math.min(1, Math.hypot(fwd, side));
+  if (joy.x || joy.y) { fwd = joy.y; side = joy.x; mag = Math.min(1, Math.hypot(fwd, side)); }
+  const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const q = sim.data.qpos, yaw = 2 * Math.atan2(q[6], q[3]);
+  let heading = null, speed = 0;
+  if (mag > 0.05) {
+    clearGoal();
+    const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
+    const mx = f.x * fwd - f.z * side, mz = f.z * fwd + f.x * side; // three floor plane
+    heading = Math.atan2(-mz, mx);                                  // -> MuJoCo yaw
+    speed = mag * (run ? 1.0 : 0.65);
+  } else if (goal) {
+    const dx = goal.x - q[0], dy = goal.y - q[1], d = Math.hypot(dx, dy);
+    if (d < 0.22) clearGoal();
+    else { heading = Math.atan2(dy, dx); speed = Math.min(run ? 1.0 : 0.65, 0.25 + d * 0.6); }
+  }
+  if (heading === null) return [0, 0, 0];
+  const err = wrap(heading - yaw);
+  const wz = Math.max(-2, Math.min(2, 2.6 * err));
+  const align = Math.cos(err);
+  const vx = Math.abs(err) > 1.3 ? 0 : speed * Math.max(0, align) ** 2; // turn in place when far off
+  return [vx, 0, wz];
 }
 
 // ---------- follow camera ----------
@@ -294,7 +302,7 @@ function loop(now) {
   const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
   if (sim) {
     const t = targetCmd();
-    for (let i = 0; i < 3; i++) sim.cmd[i] += (t[i] - sim.cmd[i]) * Math.min(1, dt * 6);
+    for (let i = 0; i < 3; i++) sim.cmd[i] += (t[i] - sim.cmd[i]) * Math.min(1, dt * 8);
     acc += dt;
     let n = 0;
     while (acc >= sim.cfg.step_dt && n++ < 5) { sim.step(); acc -= sim.cfg.step_dt; }
@@ -304,10 +312,16 @@ function loop(now) {
     if (follow) {
       const p = view.pelvis(), d = p.clone().sub(lastPelvis);
       camera.position.add(d); controls.target.add(d); lastPelvis.copy(p);
-      // don't let the camera sit inside a wall or furniture: ease it toward the robot
+      // Third-person boom: keep 1.3–3.5 m from the robot. If the camera ends up inside a wall or
+      // furniture, pull it in (never closer than 1.3 m) and lift it to look over the obstacle.
+      const off = camera.position.clone().sub(p), flat = Math.hypot(off.x, off.z);
       if (obstacles && !obstacles.free(camera.position.x, -camera.position.z)) {
-        const toR = p.clone().sub(camera.position); toR.y = 0;
-        if (toR.length() > 0.8) camera.position.addScaledVector(toR, Math.min(1, dt * 4));
+        if (flat > 1.3) { const k = Math.max(1.3 / flat, 1 - dt * 3); camera.position.x = p.x + off.x * k; camera.position.z = p.z + off.z * k; }
+        camera.position.y = Math.min(p.y + 2.2, camera.position.y + dt * 1.5);
+      } else if (flat < 1.3 && flat > 1e-3) {
+        const k = 1.3 / flat; camera.position.x = p.x + off.x * k; camera.position.z = p.z + off.z * k;
+      } else if (flat > 3.5) {
+        const k = 3.5 / flat; camera.position.x = p.x + off.x * k; camera.position.z = p.z + off.z * k;
       }
     }
     const v = sim.bodyVel();
@@ -317,7 +331,7 @@ function loop(now) {
   renderer.render(scene, camera);
 }
 requestAnimationFrame(loop);
-window.__rw = { get splat() { return splat; }, room, camera, controls, get sim() { return sim; } };
+window.__rw = { get splat() { return splat; }, room, camera, controls, get sim() { return sim; }, get goal() { return goal; }, get obstacles() { return obstacles; } };
 
 // ---------- boot ----------
 (async () => {

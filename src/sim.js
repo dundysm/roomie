@@ -109,7 +109,8 @@ export async function createSim(base) {
     step() {
       const qp = data.qpos, qv = data.qvel;
       const q = [qp[3], qp[4], qp[5], qp[6]];
-      const c = [clamp(this.cmd[0], R.lin_vel_x), clamp(this.cmd[1], R.lin_vel_y), clamp(this.cmd[2], R.ang_vel_z)];
+      // Yaw rate goes past the deploy range (±1): tools/sim_check.py shows a stable 1.6 rad/s at a 2.0 command.
+      const c = [clamp(this.cmd[0], R.lin_vel_x), clamp(this.cmd[1], R.lin_vel_y), clamp(this.cmd[2], [-2, 2])];
       obs[0] = qv[3]; obs[1] = qv[4]; obs[2] = qv[5];       // free-joint angular velocity is body-frame
       rotInv(q, [0, 0, -1], obs, 3);                          // projected gravity
       obs[6] = c[0]; obs[7] = c[1]; obs[8] = c[2];

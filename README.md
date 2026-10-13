@@ -13,7 +13,15 @@ python -m http.server 8770
 # open http://localhost:8770, then drop in a .spz / .ply / .splat / .sog scan
 ```
 
-Scan a room with a phone app that exports Gaussian splats (Scaniverse exports SPZ and PLY), keeping the floor in view. Controls: W/S walk, A/D strafe, Q/E turn, R reset, F follow camera; on touch screens, use the joystick.
+Scan a room with a phone app that exports Gaussian splats (Scaniverse exports SPZ and PLY), keeping the floor in view.
+
+Controls work like a third-person game:
+- **Walk:** WASD (or arrows, or the touch joystick) walks relative to the camera; the robot turns itself to face the way you push. Hold shift to go faster.
+- **Look:** drag to look around.
+- **Walk somewhere:** click (or tap) the floor and the robot walks there.
+- **Other keys:** R resets the robot; F toggles the follow camera.
+
+On load, `src/floor.js` finds the floor plane and a metric scale. It works on phone scans (Y-up, metric) and on research scans (tilted, arbitrary units). If it gets either wrong, use the set-floor button or the scale slider.
 
 ## How it fits together
 
@@ -22,7 +30,8 @@ Scan a room with a phone app that exports Gaussian splats (Scaniverse exports SP
 | `src/sim.js` | MuJoCo model, the 98-D observation, the policy MLP, PD targets, and 4 physics steps per policy step |
 | `src/robot-view.js` | Three.js meshes posed from `geom_xpos` / `geom_xmat` |
 | `src/obstacles.js` | Splat → occupancy grid (6 cm cells, 0.12–1.7 m above the floor) → merged MuJoCo boxes; picks an open spawn point |
-| `src/app.js` | Scene, splat loading, automatic floor fit (RANSAC), 3-click floor fallback, driving, follow camera |
+| `src/floor.js` | Floor plane and scale: sequential RANSAC, boundary-plane test, floor vs ceiling by furniture mass |
+| `src/app.js` | Scene, splat loading, 3-click floor fallback, camera-relative steering, click-to-walk, third-person camera |
 | `public/g1/` | `g1.xml` and meshes, `policy.bin` / `policy.json` |
 | `tools/` | Exporters and the Python reference loop that the JS is checked against |
 

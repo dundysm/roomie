@@ -1,27 +1,42 @@
-# roomwalk
+# roomie
 
-Drop in a Gaussian-splat scan of your room and drive a live Unitree G1 around it, all in the browser.
+**A humanoid roommate for your 3D scan.** Drop in a Gaussian-splat scan of your room and a live Unitree G1 walks around it, in your browser.
 
-- **Physics:** MuJoCo (WebAssembly) at 200 Hz.
-- **Control:** Unitree's own G1 velocity policy at 50 Hz. It's a small MLP run in plain JavaScript, with the same observations, action scales and PD gains it was trained with.
-- **Room:** your scan, rendered with Spark. The floor is found automatically, and the scan becomes collision boxes, so the robot walks into your couch instead of through it.
+**Live demo:** https://dundysm.github.io/roomie/
+
+The robot is not animated:
+- **Physics:** MuJoCo (WebAssembly) runs at 200 Hz.
+- **Control:** Unitree's own G1 walking policy runs at 50 Hz, with the observations, action scales and PD gains it was trained with.
+- **The room becomes physics:** the floor is found automatically, and the scan is turned into collision geometry.
+- **Interaction:** shove the robot, throw balls at it, send it across the room, or look through its head camera.
+
+## What you can do
+
+- **Walk it:** WASD, the arrow keys or the touch joystick. Movement is camera-relative, so the robot turns to face the way you push. Hold shift to run.
+- **Send it somewhere:** click the floor. It plans a path around your furniture (A* on the scan's collision grid) and walks there.
+- **Shove it:** drag any part of the robot. It's pulled by a spring force and fights to stay on its feet; if it falls, it gets back up.
+- **Throw things at it:** press B or the "throw ball" button. Balls bounce off your real furniture.
+- **See what it sees:** press V for its head-camera view, rendered from your scan.
+- **Record a clip:** use the rec button to save a video of the canvas.
+
+It runs at 60 fps on a laptop iGPU (Intel Arc 140V).
+
+## Bring your own room
+
+1. Scan a room with [Scaniverse](https://scaniverse.com) (free on iOS and Android). Walk slowly around the room for about a minute, keeping the floor in view.
+2. Process the scan as a **splat** and export **SPZ** (PLY also works).
+3. Drop the file onto the page.
+
+Floor and scale are set automatically; `src/floor.js` handles both metric phone scans and tilted research scans in arbitrary units. If either comes out wrong, use the set-floor button (click 3 floor points) or the scale slider. Your scan never leaves your browser.
 
 ## Run locally
 
 ```bash
 python -m http.server 8770
-# open http://localhost:8770, then drop in a .spz / .ply / .splat / .sog scan
+# open http://localhost:8770 and drop in a scan
 ```
 
-Scan a room with a phone app that exports Gaussian splats (Scaniverse exports SPZ and PLY), keeping the floor in view.
-
-Controls work like a third-person game:
-- **Walk:** WASD (or arrows, or the touch joystick) walks relative to the camera; the robot turns itself to face the way you push. Hold shift to go faster.
-- **Look:** drag to look around.
-- **Walk somewhere:** click (or tap) the floor and the robot walks there.
-- **Other keys:** R resets the robot; F toggles the follow camera.
-
-On load, `src/floor.js` finds the floor plane and a metric scale. It works on phone scans (Y-up, metric) and on research scans (tilted, arbitrary units). If it gets either wrong, use the set-floor button or the scale slider.
+There's no build step: plain ES modules, with three.js, Spark and MuJoCo loaded from jsDelivr.
 
 ## How it fits together
 
@@ -29,9 +44,9 @@ On load, `src/floor.js` finds the floor plane and a metric scale. It works on ph
 |---|---|
 | `src/sim.js` | MuJoCo model, the 98-D observation, the policy MLP, PD targets, and 4 physics steps per policy step |
 | `src/robot-view.js` | Three.js meshes posed from `geom_xpos` / `geom_xmat` |
-| `src/obstacles.js` | Splat → occupancy grid (6 cm cells, 0.12–1.7 m above the floor) → merged MuJoCo boxes; picks an open spawn point |
+| `src/obstacles.js` | Splat → occupancy grid (6 cm cells, 0.12–1.7 m above the floor) → merged MuJoCo boxes; open spawn point; A* planner |
 | `src/floor.js` | Floor plane and scale: sequential RANSAC, boundary-plane test, floor vs ceiling by furniture mass |
-| `src/app.js` | Scene, splat loading, 3-click floor fallback, camera-relative steering, click-to-walk, third-person camera |
+| `src/app.js` | Scene, splat loading, steering, click-to-walk, shove and throw, env-map lighting, head camera, recording |
 | `public/g1/` | `g1.xml` and meshes, `policy.bin` / `policy.json` |
 | `tools/` | Exporters and the Python reference loop that the JS is checked against |
 
@@ -57,6 +72,8 @@ Reference loop results (8 s on a flat floor, achieved body velocity over the las
 | stand | 0.000 | no |
 
 ## Credits and licences
+
+- roomie's own code: Apache-2.0 (`LICENSE`).
 
 - Robot model, meshes and velocity policy: [unitreerobotics/unitree_rl_mjlab](https://github.com/unitreerobotics/unitree_rl_mjlab) @ `1425b15`, Apache-2.0. `public/g1/g1.xml` is that model compiled by mjlab 1.2.0, with its actuators and armature.
 - [MuJoCo](https://github.com/google-deepmind/mujoco): Apache-2.0.

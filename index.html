@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>roomwalk · a humanoid in your room</title>
-<meta name="description" content="Drop in a Gaussian-splat scan of your room and drive a live, policy-controlled Unitree G1 around it. MuJoCo physics and the RL policy run in your browser.">
+<title>roomie · a humanoid in your room</title>
+<meta name="description" content="Drop in a Gaussian-splat scan of your room and a live Unitree G1 walks around it: MuJoCo physics and Unitree's RL walking policy, running in your browser. Shove it, throw things at it, see what it sees.">
+<meta property="og:title" content="roomie · a humanoid in your room">
+<meta property="og:description" content="Drop in a scan of your room; a live, physics-simulated Unitree G1 walks around it, in your browser.">
 <script type="importmap">
 {
   "imports": {
@@ -34,6 +36,10 @@ button.on { background: var(--ink); color: #0b0d10; }
 .scale input { flex: 1; accent-color: #fff; }
 #status { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 28px)); text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font: 12px var(--mono); color: var(--ink); pointer-events: none; }
 #hud { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); font: 12px var(--mono); color: var(--mute); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; white-space: nowrap; }
+#empty { pointer-events: none; position: fixed; left: 50%; bottom: 58px; transform: translateX(-50%); width: min(440px, calc(100vw - 28px)); background: var(--panel); backdrop-filter: blur(10px); border: 1px dashed #ffffff40; border-radius: 16px; padding: 22px; text-align: center; }
+#empty h2 { margin: 0 0 8px; font: 600 16px var(--mono); }
+#empty p { margin: 6px 0; color: var(--mute); font-size: 13px; }
+#empty a { color: var(--gold); pointer-events: auto; }
 #fell { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); font: 600 15px var(--mono); background: #2a0f0fcc; border: 1px solid #ff6b6b55; border-radius: 12px; padding: 12px 16px; }
 #joy { position: fixed; right: 22px; bottom: 56px; width: 120px; height: 120px; border-radius: 50%; border: 1px solid var(--line); background: #ffffff0a; touch-action: none; display: none; }
 #knob { position: absolute; left: 38px; top: 38px; width: 44px; height: 44px; border-radius: 50%; background: #ffffff55; transition: transform .05s; }
@@ -45,8 +51,8 @@ button.on { background: var(--ink); color: #0b0d10; }
 <body>
 <div id="stage"></div>
 <div class="panel">
-  <h1>roomwalk</h1>
-  <div class="sub">a live humanoid in your room</div>
+  <h1>roomie</h1>
+  <div class="sub">a humanoid roommate for your 3D scan</div>
   <div class="row">
     <label class="btn" for="file">load scan</label><input id="file" type="file" accept=".spz,.ply,.splat,.ksplat,.sog,.zip">
     <button id="floor">set floor</button>
@@ -65,6 +71,12 @@ button.on { background: var(--ink); color: #0b0d10; }
 </div>
 <div id="status">starting…</div>
 <div id="hud"></div>
+<div id="empty">
+  <h2>drop a scan of your room here</h2>
+  <p>a Gaussian splat: <b>.spz</b> · .ply · .splat · .sog</p>
+  <p>no scan yet? <a href="https://scaniverse.com" target="_blank" rel="noopener">Scaniverse</a> is free: walk around a room for a minute, process as a splat, export SPZ.</p>
+  <p>or just drive the robot on the grid: WASD</p>
+</div>
 <div id="fell" hidden>it fell over · press R</div>
 <div id="joy"><div id="knob"></div></div>
 <script type="module" src="src/app.js"></script>

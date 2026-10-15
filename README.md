@@ -1,8 +1,8 @@
-# roomie
+# center of mass
 
-**A humanoid roommate for your 3D scan.** Drop in a Gaussian-splat scan of your room and a live Unitree G1 walks around it, in your browser.
+**A live humanoid in your 3D scan.** Drop in a Gaussian-splat scan of your room and a live Unitree G1 walks around it, in your browser.
 
-**Live demo:** https://dundysm.github.io/roomie/
+**Live demo:** https://dundysm.github.io/center-of-mass/
 
 The robot is not animated:
 - **Physics:** MuJoCo (WebAssembly) runs at 200 Hz.
@@ -73,7 +73,7 @@ Reference loop results (8 s on a flat floor, achieved body velocity over the las
 
 ## Credits and licences
 
-- roomie's own code: Apache-2.0 (`LICENSE`).
+- This project's own code: Apache-2.0 (`LICENSE`).
 
 - Robot model, meshes and velocity policy: [unitreerobotics/unitree_rl_mjlab](https://github.com/unitreerobotics/unitree_rl_mjlab) @ `1425b15`, Apache-2.0. `public/g1/g1.xml` is that model compiled by mjlab 1.2.0, with its actuators and armature.
 - [MuJoCo](https://github.com/google-deepmind/mujoco): Apache-2.0.

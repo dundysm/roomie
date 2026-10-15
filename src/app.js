@@ -64,12 +64,12 @@ function applyCalib() {
 }
 function saveCalib() {
   if (!sceneKey) return;
-  try { localStorage.setItem('roomie:' + sceneKey, JSON.stringify({ calib, roomScale })); } catch {}
+  try { localStorage.setItem('center-of-mass:' + sceneKey, JSON.stringify({ calib, roomScale })); } catch {}
 }
 function loadCalib() {
   calib = null; roomScale = 1;
   try {
-    const s = JSON.parse(localStorage.getItem('roomie:' + sceneKey) || 'null');
+    const s = JSON.parse(localStorage.getItem('center-of-mass:' + sceneKey) || 'null');
     if (s) { calib = s.calib; roomScale = s.roomScale || 1; }
   } catch {}
   $('scale').value = Math.log2(roomScale);
@@ -404,7 +404,7 @@ $('rec').onclick = () => {
   rec.onstop = () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(chunks, { type }));
-    a.download = `roomie-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+    a.download = `center-of-mass-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
     a.click(); rec = null; $('rec').classList.remove('on'); $('rec').textContent = 'rec';
   };
   rec.start(); $('rec').classList.add('on'); $('rec').textContent = '■ stop';
